@@ -1,0 +1,16 @@
+# Binaires et objets de compilation
+build/
+load
+check
+*.o
+*.exe
+
+# Sorties generees
+results/*.csv
+results/*.txt
+!results/.gitkeep
+!report/.gitkeep
+
+# Fichiers systeme
+.DS_Store
+*~
