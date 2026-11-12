@@ -1,13 +1,11 @@
-#include <cstdio>
-// =============================================================================
-//  Projet Reconnaissance des Formes - Base SharvitB2
-//  Implementation du parser et de la classe Dataset (taches 1 et 2).
-// =============================================================================
+// Dataset.cpp
+// Lecture des fichiers de signatures et construction du Dataset.
 
 #include "Dataset.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -19,9 +17,6 @@ namespace fs = std::filesystem;
 
 namespace rf {
 
-// -----------------------------------------------------------------------------
-//  Tables de correspondance methode -> nom / dossier / extension / dimension.
-// -----------------------------------------------------------------------------
 const char* method_name(Method m) {
     switch (m) {
         case Method::ART: return "ART";
@@ -38,158 +33,141 @@ const char* method_folder(Method m) {
         case Method::ART: return "ART";
         case Method::GFD: return "GFD";
         case Method::SA:  return "SA";
-        case Method::YNG: return "Yang";       // le dossier s'appelle "Yang"
-        case Method::ZRK: return "Zernike7";   // le dossier s'appelle "Zernike7"
+        case Method::YNG: return "Yang";
+        case Method::ZRK: return "Zernike7";
     }
     return "?";
 }
 
-const char* method_ext(Method m) {
-    switch (m) {
-        case Method::ART: return ".art";
-        case Method::GFD: return ".gfd";
-        case Method::SA:  return ".sa";
-        case Method::YNG: return ".yng";
-        case Method::ZRK: return ".zrk";
-    }
-    return "";
-}
-
-int method_expected_dim(Method m) {
-    switch (m) {
-        case Method::ART: return 36;
-        case Method::GFD: return 100;
-        case Method::SA:  return 20;
-        case Method::YNG: return 29;
-        case Method::ZRK: return 18;
-    }
-    return 0;
-}
-
-// -----------------------------------------------------------------------------
-//  Lecture d'un fichier descripteur : une valeur par ligne.
-// -----------------------------------------------------------------------------
 std::vector<double> read_descriptor_file(const std::string& path) {
     std::ifstream in(path);
     if (!in) {
         throw std::runtime_error("Fichier introuvable : " + path);
     }
-    std::vector<double> v;
+
+    std::vector<double> valeurs;
     std::string ligne;
-    int numero = 0;
+    int numero = 0;  // uniquement pour dire où est l'erreur, s'il y en a une
+
     while (std::getline(in, ligne)) {
         ++numero;
-        // On retire les espaces en debut/fin pour tolerer " 0.12 " ou "\r".
-        auto debut = ligne.find_first_not_of(" \t\r\n");
-        if (debut == std::string::npos) continue;          // ligne vide : ignoree
-        auto fin = ligne.find_last_not_of(" \t\r\n");
-        std::string token = ligne.substr(debut, fin - debut + 1);
 
-        std::istringstream iss(token);
+        // On enlève les espaces autour de la valeur. Le \r est là pour les
+        // fichiers enregistrés sous Windows, qui finissent leurs lignes par \r\n.
+        auto debut = ligne.find_first_not_of(" \t\r\n");
+        if (debut == std::string::npos) continue;  // ligne vide, on passe
+        auto fin = ligne.find_last_not_of(" \t\r\n");
+        std::string texte = ligne.substr(debut, fin - debut + 1);
+
+        // Conversion du texte en nombre. Si ça échoue, le fichier est abîmé
+        // et on préfère s'arrêter tout de suite plutôt que de continuer avec
+        // des données fausses.
+        std::istringstream iss(texte);
         double x;
         if (!(iss >> x)) {
-            throw std::runtime_error("Valeur non numerique dans " + path +
-                                     " (ligne " + std::to_string(numero) + ") : '" +
-                                     token + "'");
+            throw std::runtime_error("Valeur non numérique dans " + path + ", ligne " +
+                                     std::to_string(numero) + " : '" + texte + "'");
         }
-        v.push_back(x);
+        valeurs.push_back(x);
     }
-    if (v.empty()) {
+
+    if (valeurs.empty()) {
         throw std::runtime_error("Fichier vide : " + path);
     }
-    return v;
+    return valeurs;
 }
 
-// -----------------------------------------------------------------------------
-//  Parsing du nom de fichier sCCnNNN.ext
-// -----------------------------------------------------------------------------
 bool parse_filename(const std::string& filename, int& classe, int& echantillon) {
-    // On ne garde que le nom de base (sans chemin ni extension).
-    std::string base = fs::path(filename).stem().string();
-    // Attention : pour "s05n011.zrk.txt", stem() donne "s05n011.zrk".
-    // On coupe donc au premier point eventuel restant.
-    auto point = base.find('.');
-    if (point != std::string::npos) base = base.substr(0, point);
+    // stem() retire le chemin et l'extension : "data/ART/s01n005.art" -> "s01n005".
+    // On coupe aussi au premier point restant au cas où il y aurait une double
+    // extension, comme les ".zrk.txt" de l'archive d'origine.
+    std::string nom = fs::path(filename).stem().string();
+    auto point = nom.find('.');
+    if (point != std::string::npos) nom = nom.substr(0, point);
 
-    // Format attendu : s + 2 chiffres + n + 3 chiffres (insensible a la casse).
-    if (base.size() != 7) return false;
-    std::string low = base;
-    std::transform(low.begin(), low.end(), low.begin(),
+    // On attend exactement 7 caractères : s + 2 chiffres + n + 3 chiffres.
+    // Le passage en minuscules permet d'accepter aussi "S01N005".
+    if (nom.size() != 7) return false;
+    std::transform(nom.begin(), nom.end(), nom.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
-    if (low[0] != 's' || low[3] != 'n') return false;
+    if (nom[0] != 's' || nom[3] != 'n') return false;
     for (int i : {1, 2, 4, 5, 6}) {
-        if (!std::isdigit(static_cast<unsigned char>(low[i]))) return false;
+        if (!std::isdigit(static_cast<unsigned char>(nom[i]))) return false;
     }
-    classe      = std::stoi(low.substr(1, 2));
-    echantillon = std::stoi(low.substr(4, 3));
+
+    classe = std::stoi(nom.substr(1, 2));       // "01"  -> 1
+    echantillon = std::stoi(nom.substr(4, 3));  // "005" -> 5
     return true;
 }
 
-// -----------------------------------------------------------------------------
-//  Chargement d'une methode.
-// -----------------------------------------------------------------------------
+// Charge toutes les formes d'une méthode (fonction interne à ce fichier).
 static MethodData load_method(const std::string& racine, Method m, int nb_classes) {
     fs::path dossier = fs::path(racine) / method_folder(m);
     if (!fs::exists(dossier)) {
         throw std::runtime_error("Dossier manquant : " + dossier.string());
     }
 
-    MethodData md;
-    // On memorise temporairement (classe, ech) -> vecteur pour trier ensuite.
-    struct Entree { int classe, ech; std::string nom; std::vector<double> vec; };
-    std::vector<Entree> entrees;
+    // Le dossier ne rend pas les fichiers dans un ordre fiable. On les garde
+    // donc d'abord dans une liste temporaire, qu'on triera ensuite.
+    struct Forme {
+        int classe;
+        int echantillon;
+        std::string nom;
+        std::vector<double> vecteur;
+    };
+    std::vector<Forme> formes;
 
-    for (const auto& e : fs::directory_iterator(dossier)) {
-        if (!e.is_regular_file()) continue;
-        const std::string fichier = e.path().filename().string();
-        int classe, ech;
-        if (!parse_filename(fichier, classe, ech)) continue;  // .DS_Store, etc.
-        if (classe < 1 || classe > nb_classes) continue;      // filtrage 6/12/18
+    for (const auto& entree : fs::directory_iterator(dossier)) {
+        if (!entree.is_regular_file()) continue;
 
-        std::vector<double> vec = read_descriptor_file(e.path().string());
-        // Nom canonique sCCnNNN (classe sur 2 chiffres, echantillon sur 3).
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "s%02dn%03d", classe, ech);
-        std::string nom(buf);
-        entrees.push_back({classe, ech, nom, std::move(vec)});
+        int classe, echantillon;
+        if (!parse_filename(entree.path().filename().string(), classe, echantillon)) {
+            continue;  // fichier qui n'est pas une signature (.DS_Store par exemple)
+        }
+        // C'est ici qu'on ne garde que les 6, 12 ou 18 premières classes.
+        if (classe < 1 || classe > nb_classes) continue;
+
+        // On reconstruit un nom propre "sCCnNNN", identique pour les 5 méthodes,
+        // quelle que soit la façon dont le fichier était écrit sur le disque.
+        char nom[16];
+        std::snprintf(nom, sizeof(nom), "s%02dn%03d", classe, echantillon);
+
+        formes.push_back({classe, echantillon, nom,
+                          read_descriptor_file(entree.path().string())});
     }
 
-    // Tri (classe, echantillon) : alignement reproductible entre methodes.
-    std::sort(entrees.begin(), entrees.end(), [](const Entree& a, const Entree& b) {
-        return a.classe != b.classe ? a.classe < b.classe : a.ech < b.ech;
+    if (formes.empty()) {
+        throw std::runtime_error(std::string("Aucune forme trouvée pour ") + method_name(m));
+    }
+
+    // Tri par classe, puis par numéro d'échantillon. Comme les 5 méthodes sont
+    // triées de la même façon, la forme i est la même partout.
+    std::sort(formes.begin(), formes.end(), [](const Forme& a, const Forme& b) {
+        if (a.classe != b.classe) return a.classe < b.classe;
+        return a.echantillon < b.echantillon;
     });
 
-    // Verification de la dimension constante.
-    if (entrees.empty()) {
-        throw std::runtime_error(std::string("Aucune forme pour la methode ") +
-                                 method_name(m));
-    }
-    md.dim = static_cast<int>(entrees.front().vec.size());
-    for (const auto& en : entrees) {
-        if (static_cast<int>(en.vec.size()) != md.dim) {
-            throw std::runtime_error(
-                std::string("Dimension variable pour ") + method_name(m) + " : " +
-                en.nom + " a " + std::to_string(en.vec.size()) +
-                " valeurs au lieu de " + std::to_string(md.dim));
+    // On range les formes dans la structure finale, en vérifiant au passage
+    // que tous les vecteurs ont la même longueur que le premier.
+    MethodData md;
+    md.dim = static_cast<int>(formes.front().vecteur.size());
+    for (auto& f : formes) {
+        if (static_cast<int>(f.vecteur.size()) != md.dim) {
+            throw std::runtime_error(std::string("Longueur différente pour ") + method_name(m) +
+                                     " : " + f.nom + " a " + std::to_string(f.vecteur.size()) +
+                                     " valeurs au lieu de " + std::to_string(md.dim));
         }
-        md.X.push_back(en.vec);
-        md.y.push_back(en.classe);
-        md.ech.push_back(en.ech);
-        md.names.push_back(en.nom);
-    }
-
-    // Avertissement si la dimension differe de celle attendue (non bloquant).
-    if (md.dim != method_expected_dim(m)) {
-        std::cerr << "[AVERTISSEMENT] " << method_name(m) << " : dimension "
-                  << md.dim << " (attendu " << method_expected_dim(m) << ")\n";
+        md.X.push_back(std::move(f.vecteur));  // déplacé plutôt que copié
+        md.y.push_back(f.classe);
+        md.names.push_back(f.nom);
     }
     return md;
 }
 
 void Dataset::load(const std::string& racine, int nb_classes) {
     if (nb_classes != 6 && nb_classes != 12 && nb_classes != 18) {
-        throw std::runtime_error("nb_classes doit valoir 6, 12 ou 18 (recu " +
+        throw std::runtime_error("nb_classes doit valoir 6, 12 ou 18 (reçu " +
                                  std::to_string(nb_classes) + ")");
     }
     nb_classes_ = nb_classes;
@@ -198,43 +176,37 @@ void Dataset::load(const std::string& racine, int nb_classes) {
         data_[static_cast<int>(m)] = load_method(racine, m, nb_classes);
     }
 
-    // Verification : les 5 methodes doivent decrire exactement les memes formes.
-    const auto& ref = data_[0].names;
+    // Dernière vérification : les 5 méthodes doivent décrire exactement les
+    // mêmes formes. Si une liste de noms diffère, il manque un fichier quelque part.
+    const auto& reference = data_[0].names;
     for (int i = 1; i < NB_METHODES; ++i) {
-        if (data_[i].names != ref) {
-            throw std::runtime_error(
-                std::string("Les formes de ") + method_name(ALL_METHODS[i]) +
-                " ne correspondent pas a celles de " + method_name(ALL_METHODS[0]) +
-                " : chaque forme doit avoir ses 5 descripteurs.");
+        if (data_[i].names != reference) {
+            throw std::runtime_error(std::string("Les formes de ") + method_name(ALL_METHODS[i]) +
+                                     " ne sont pas les mêmes que celles de ART");
         }
     }
 }
 
-// -----------------------------------------------------------------------------
-//  Test de validite (tache 1).
-// -----------------------------------------------------------------------------
 void Dataset::print_summary() const {
-    std::cout << "=== Chargement SharvitB2 : " << nb_classes_ << " classes, "
-              << nb_formes() << " formes ===\n";
+    std::cout << "Chargement : " << nb_classes_ << " classes, " << nb_formes() << " formes\n";
 
-    std::cout << "Dimensions par methode :\n";
     for (Method m : ALL_METHODS) {
-        std::cout << "  " << method_name(m) << " : dim = " << method(m).dim
-                  << ", formes = " << method(m).size() << "\n";
+        std::cout << "  " << method_name(m) << " : vecteurs de " << method(m).dim
+                  << " valeurs\n";
     }
 
-    // Nombre d'echantillons par classe (doit etre 12 partout).
+    // On compte les formes de chaque classe : on en attend 12 partout.
     std::map<int, int> par_classe;
     for (int c : data_[0].y) par_classe[c]++;
-    std::cout << "Echantillons par classe (doit etre 12) :\n  ";
+
     bool ok = true;
+    std::cout << "Formes par classe :";
     for (const auto& [classe, n] : par_classe) {
-        std::cout << "c" << classe << "=" << n << " ";
+        std::cout << " c" << classe << "=" << n;
         if (n != 12) ok = false;
     }
-    std::cout << "\n";
-    std::cout << (ok ? "[OK] 12 echantillons par classe.\n"
-                     : "[ERREUR] certaines classes n'ont pas 12 echantillons.\n");
+    std::cout << "\n" << (ok ? "OK, 12 formes dans chaque classe.\n"
+                             : "Problème : certaines classes n'ont pas 12 formes.\n");
 }
 
 }  // namespace rf

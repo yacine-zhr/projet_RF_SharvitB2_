@@ -1,89 +1,63 @@
 # Projet Reconnaissance des Formes — Base SharvitB2
 
-M1 Informatique 2026/2027 — Implémentation C++ — Travail en binôme.
+M1 Informatique 2026/2027 — projet en binôme, en C++.
 
-Évaluation de 5 descripteurs de formes binaires (ART, ZRK, GFD, YNG, SA) associés
-à des classifieurs (k-PPV, k-means, vote majoritaire) sur la base SharvitB2
-(18 classes × 12 échantillons = 216 formes). Les vecteurs caractéristiques sont
-déjà calculés : **aucun traitement d'image**, on lit des fichiers texte.
+On compare 5 descripteurs de formes (ART, ZRK, GFD, YNG, SA) associés à des
+classifieurs (k-PPV, k-means, vote majoritaire) sur la base SharvitB2 :
+18 classes de 12 formes, soit 216 formes. Les vecteurs sont déjà calculés,
+on ne fait donc aucun traitement d'image : on lit des fichiers texte.
 
-## Structure du dépôt
+## Organisation
 
 ```
-projet_RF_SharvitB2/
-├── include/        en-têtes (.hpp)
-│   └── Dataset.hpp
-├── src/            sources (.cpp)
-│   ├── Dataset.cpp      parser + classe Dataset (tâches 1, 2)
-│   ├── main_load.cpp    programme "load"  : test de chargement
-│   └── check_format.cpp programme "check" : vérification complète du format
-├── data/
-│   └── SharvitB2/  signatures (ART/ GFD/ SA/ Yang/ Zernike7/)
-├── results/        sorties générées (CSV, figures) — ignoré par git
-├── report/         dossier d'analyse (PDF)
-├── Makefile
-└── README.md
+include/Dataset.hpp        déclaration du parser et de la classe Dataset
+src/Dataset.cpp            lecture des fichiers et chargement des données
+src/main_load.cpp          programme de test du chargement
+scripts/verif_donnees.sh   vérification des données (étape 2)
+data/SharvitB2/            les signatures : ART/ GFD/ SA/ Yang/ Zernike7/
+results/                   résultats générés par nos programmes
+report/                    dossier d'analyse
 ```
 
-## Compilation
+## Compiler et lancer
 
 ```bash
-make          # compile les exécutables "load" et "check"
-make run      # compile puis lance check (18 classes) et load (6 classes)
-make clean    # supprime build/ et les binaires
+make                            # compile le programme load
+make run                        # compile et charge les 6 premières classes
+make clean                      # efface ce qui a été compilé
+
+./load data/SharvitB2 12        # charge 12 classes (144 formes)
+bash scripts/verif_donnees.sh   # vérifie le format de tous les fichiers
 ```
 
-Compilateur : `g++ -std=c++17 -O2 -Wall -Wextra`. **Vérifiez que les deux membres
-du binôme compilent avec la même commande** (c'est le `CXXFLAGS` du Makefile).
+Options de compilation communes au binôme : `g++ -std=c++17 -O2 -Wall -Wextra`.
 
-## Utilisation
+## Les données
 
-```bash
-bash scripts/verif_donnees.sh  # analyse du format (étape 2)
-./check data/SharvitB2         # même vérification via le parser C++
-./load  data/SharvitB2 6       # charge les 6 premières classes (72 formes)
-./load  data/SharvitB2 12      # 12 classes (144 formes)
-./load  data/SharvitB2 18      # 18 classes (216 formes)
-```
+| Méthode | Dossier    | Extension | Longueur du vecteur |
+|---------|------------|-----------|---------------------|
+| ART     | `ART`      | `.art`    | 36                  |
+| GFD     | `GFD`      | `.gfd`    | 100                 |
+| SA      | `SA`       | `.sa`     | 20                  |
+| YNG     | `Yang`     | `.yng`    | 29                  |
+| ZRK     | `Zernike7` | `.zrk`    | 18                  |
 
-## Format des données
+Une valeur par ligne, sans en-tête. Les fichiers s'appellent `sCCnNNN.ext` :
+`CC` est la classe (01 à 18) et `NNN` le numéro de l'échantillon (001 à 012).
 
-| Méthode | Dossier     | Extension | Dimension | Remarque |
-|---------|-------------|-----------|-----------|----------|
-| ART     | `ART`       | `.art`    | 36        | dernière composante constante = 0 |
-| GFD     | `GFD`       | `.gfd`    | 100       | valeurs ~ [8e-5 ; 0,89] |
-| SA      | `SA`        | `.sa`     | 20        | 1ère valeur ≈ 1 (0,99999–1,00001) |
-| YNG     | `Yang`      | `.yng`    | 29        | **longueur fixe confirmée** |
-| ZRK     | `Zernike7`  | `.zrk`    | 18        | valeurs ~ [0,007 ; 13211] → grande échelle |
+Ce que la vérification a montré :
+- les 216 formes ont bien leurs 5 descripteurs, et chaque classe a 12 formes ;
+- la longueur des vecteurs est fixe pour chaque méthode, y compris pour YNG ;
+- les échelles sont très différentes (jusqu'à 13 000 pour ZRK, moins de 1
+  ailleurs), ce qui imposera une normalisation ;
+- la dernière valeur d'ART vaut toujours 0.
 
-- Fichier texte, **une valeur par ligne**, sans en-tête ni indice, ligne vide
-  finale ignorée.
-- Nom : `sCCnNNN.ext` — `CC` = classe (01..18), `NNN` = échantillon (001..012).
+Deux erreurs de nommage de l'archive d'origine ont été corrigées (le contenu
+des fichiers n'a pas changé) : les fichiers Zernike avaient une double
+extension `.zrk.txt`, et l'un d'eux s'appelait `s05n011.zrkt.txt`. Tous sont
+maintenant en `.zrk`.
 
-### Vérifications faites (résultat de `./check`)
+## Prochaines étapes
 
-- ✅ 216 formes, chaque forme possède bien ses **5 descripteurs** ;
-- ✅ dimension **constante** par méthode (valeurs du tableau ci-dessus) ;
-- ✅ **12 échantillons par classe** pour les 18 classes ;
-- ✅ **YNG a une longueur fixe de 29** (la question de la tâche 1 est réglée) ;
-- ℹ️ une seule composante constante détectée (dernière valeur de ART) → à gérer
-  dans la normalisation z-score (écart-type nul : ignorer la composante ou
-  ajouter un epsilon).
-
-### Nettoyage appliqué aux données d'origine
-
-L'archive fournie contenait deux anomalies de nommage, corrigées dans ce dépôt :
-
-1. Les fichiers Zernike étaient en **double extension** `.zrk.txt` → renommés `.zrk`.
-2. Un fichier était mal nommé : `s05n011.zrkt.txt` (faute de frappe `zrkt`) →
-   renommé `s05n011.zrk`. Son vecteur a bien 18 valeurs.
-
-Les dossiers ont aussi été renommés sans le préfixe `=` présent dans l'archive.
-Le parser (`parse_filename`) reste néanmoins tolérant (casse, extension, chemin).
-
-## Suite (tâches 2 à 4)
-
-Le socle de lecture est en place. Prochaines briques à poser sur `Dataset` :
-normalisation z-score (tâche 2), distances L1/L2/Minkowski (tâche 3),
-protocole leave-one-out (tâche 4), puis le k-PPV de base.
-
+Normalisation des vecteurs, distances L1/L2, protocole leave-one-out, puis
+k plus proches voisins sur les 6 premières classes.

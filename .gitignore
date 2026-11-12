@@ -1,16 +1,12 @@
-# Binaires et objets de compilation
+# Tout ce que la compilation produit : chacun le régénère avec make.
 build/
 load
-check
 *.o
-*.exe
 
-# Sorties generees
+# Les résultats générés par nos programmes.
 results/*.csv
 results/*.txt
-!results/.gitkeep
-!report/.gitkeep
 
-# Fichiers systeme
+# Fichiers créés automatiquement par macOS et certains éditeurs.
 .DS_Store
 *~

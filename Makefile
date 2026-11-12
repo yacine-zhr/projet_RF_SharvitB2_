@@ -1,44 +1,32 @@
-# =============================================================================
-#  Projet Reconnaissance des Formes - Base SharvitB2
-#  Makefile du socle (taches 0 a 1).
-#  Compilation :  g++ -std=c++17 -O2 -Wall
-# =============================================================================
+# Makefile du projet SharvitB2.
+# Les deux membres du binôme compilent avec les mêmes options, définies ici.
 
 CXX      := g++
 CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Iinclude
-SRCDIR   := src
-BUILDDIR := build
+BUILD    := build
 
-# Fichiers communs (la bibliotheque du projet).
-COMMON   := $(BUILDDIR)/Dataset.o
+# Code commun à tous les programmes (le parser).
+COMMUN   := $(BUILD)/Dataset.o
 
-# Programmes executables (un main = un binaire).
-BINS     := load check
+.PHONY: all run clean
 
-.PHONY: all clean run
+all: load
 
-all: $(BINS)
-
-# --- Edition de liens des executables ---
-load:  $(BUILDDIR)/main_load.o $(COMMON)
+# Le programme de test du chargement.
+load: $(BUILD)/main_load.o $(COMMUN)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-check: $(BUILDDIR)/check_format.o $(COMMON)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-# --- Compilation des objets ---
-$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp | $(BUILDDIR)
+# Chaque src/X.cpp est compilé en build/X.o. Ainsi, quand on modifie un seul
+# fichier, make ne recompile que celui-là.
+$(BUILD)/%.o: src/%.cpp include/Dataset.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BUILDDIR):
-	mkdir -p $(BUILDDIR)
+$(BUILD):
+	mkdir -p $(BUILD)
 
-# --- Raccourcis ---
-# Verification complete du format (18 classes) puis chargement sur 6 classes.
+# Compile et lance le test sur les 6 premières classes.
 run: all
-	./check data/SharvitB2
-	@echo
 	./load data/SharvitB2 6
 
 clean:
-	rm -rf $(BUILDDIR) $(BINS)
+	rm -rf $(BUILD) load
